@@ -125,7 +125,7 @@ def main():
 
     # Visualize the weights
     print("Show network weights matrix...")
-    # model.plot_weights()
+    model.plot_weights()
 
 if __name__ == '__main__':
     main()
