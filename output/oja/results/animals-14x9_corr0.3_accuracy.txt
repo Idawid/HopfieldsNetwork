@@ -1,0 +1,11 @@
+File: animals-14x9.csv
+Learning Rule: oja
+Corruption Level: 0.3
+--------------------
+Pattern 1 Accuracy: 64.29%
+Pattern 2 Accuracy: 64.29%
+Pattern 3 Accuracy: 69.05%
+Pattern 4 Accuracy: 57.94%
+Pattern 5 Accuracy: 59.52%
+Pattern 6 Accuracy: 100.00%
+Overall Accuracy: 69.18%

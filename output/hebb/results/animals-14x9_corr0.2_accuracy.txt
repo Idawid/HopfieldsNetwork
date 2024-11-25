@@ -1,0 +1,11 @@
+File: animals-14x9.csv
+Learning Rule: hebb
+Corruption Level: 0.2
+--------------------
+Pattern 1 Accuracy: 92.06%
+Pattern 2 Accuracy: 83.33%
+Pattern 3 Accuracy: 85.71%
+Pattern 4 Accuracy: 85.71%
+Pattern 5 Accuracy: 100.00%
+Pattern 6 Accuracy: 88.89%
+Overall Accuracy: 89.29%
