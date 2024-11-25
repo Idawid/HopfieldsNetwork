@@ -28,31 +28,27 @@ class HopfieldNetwork(object):
 
     self.W = W
 
-  def train_oja(self, train_data, learning_rate=0.01, epochs=100):
-    """Oja's learning rule"""
-    print("Training with Oja's rule...")
+  def train_oja(self, train_data, learning_rate=0.01, epochs=500):
+    print("Training with modified Oja's rule...")
     num_data = len(train_data)
     self.num_neuron = train_data[0].shape[0]
 
-    # Initialize weights randomly
-    W = np.random.randn(self.num_neuron, self.num_neuron)
-    # Make diagonal elements 0
-    np.fill_diagonal(W, 0)
+    # Initialize weights
+    W = np.zeros((self.num_neuron, self.num_neuron))
 
-    # Oja's rule
+    # Modified Oja's rule for Hopfield
     for epoch in tqdm(range(epochs)):
         for i in range(num_data):
             pattern = train_data[i]
             # Calculate output
-            y = np.dot(W, pattern)
-            # Update weights using Oja's rule
-            delta_W = learning_rate * np.outer(y, (pattern - np.dot(W, y)))
+            y = np.sign(np.dot(W, pattern))  # Use sign function for binary output
+            # Update weights
+            delta_W = learning_rate * (np.outer(pattern, pattern) - np.outer(y, y))
             W += delta_W
 
-            # Symmetrize W
+            # Ensure symmetry
             W = (W + W.T) / 2
-
-            # Keep diagonal elements at 0
+            # Zero diagonal
             np.fill_diagonal(W, 0)
 
     self.W = W

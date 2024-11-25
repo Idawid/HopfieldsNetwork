@@ -2,9 +2,14 @@
 """
 Adapted code to read CSV files from 'input_images' directory and process them with Hopfield Network.
 """
-
 import os
+
 import numpy as np
+
+from data_loader import get_csv_files, load_csv_patterns, ensure_experiment_dir
+from experiments import get_experiments
+from visualizer import plot, save_plot
+
 np.random.seed(1)
 from matplotlib import pyplot as plt
 from hopfield_network import HopfieldNetwork
@@ -18,43 +23,6 @@ def get_corrupted_input(input_data, corruption_level):
             corrupted[i] = -1 * v
     return corrupted
 
-
-def map_to_binary(data_flat):
-    return [(d + 1) // 2 for d in data_flat]
-
-
-def plot(data_flat, test_flat, predicted_flat, shape, figsize=(15, 5)):
-    # Map -1 to 0 and 1 to 1 for binary visualization
-    data_binary = map_to_binary(data_flat)
-    test_binary = map_to_binary(test_flat)
-    predicted_binary = map_to_binary(predicted_flat)
-
-    data = [np.reshape(d, shape) for d in data_binary]
-    test = [np.reshape(d, shape) for d in test_binary]
-    predicted = [np.reshape(d, shape) for d in predicted_binary]
-
-    num_images = len(data)
-    fig, axarr = plt.subplots(num_images, 3, figsize=figsize)
-
-    if num_images == 1:
-        axarr = np.expand_dims(axarr, axis=0)
-
-    for i in range(num_images):
-        if i == 0:
-            axarr[i, 0].set_title('Train Data')
-            axarr[i, 1].set_title("Corrupted Input")
-            axarr[i, 2].set_title('Predicted Output')
-
-        axarr[i, 0].imshow(data[i], cmap='gray', vmin=0, vmax=1)
-        axarr[i, 0].axis('off')
-        axarr[i, 1].imshow(test[i], cmap='gray', vmin=0, vmax=1)
-        axarr[i, 1].axis('off')
-        axarr[i, 2].imshow(predicted[i], cmap='gray', vmin=0, vmax=1)
-        axarr[i, 2].axis('off')
-
-    plt.tight_layout()
-    plt.savefig("output/result.png")
-    plt.show()
 
 def calculate_accuracy(original, predicted):
     per_image_accuracy = []
@@ -72,60 +40,135 @@ def calculate_accuracy(original, predicted):
     return per_image_accuracy, overall_accuracy
 
 
-def main():
-    # Load data from CSV files in 'input_images' directory
-    data = []
-    input_dir = 'input_images'
-    for filename in os.listdir(input_dir):
-        if filename.endswith('.csv'):
-            filepath = os.path.join(input_dir, filename)
-            # Read CSV file
-            d = np.loadtxt(filepath, delimiter=',')
-            data.append(d)
+def generate_random_patterns(n_patterns, shape=(5, 5)):
+    """Generate n random binary patterns of given shape"""
+    patterns = []
+    for _ in range(n_patterns):
+        pattern = np.random.choice([-1, 1], size=(shape[0] * shape[1]))
+        patterns.append(pattern)
+    return patterns
 
-    # Find maximum dimensions to pad images
-    max_rows = max([d.shape[0] for d in data])
-    max_cols = max([d.shape[1] for d in data])
 
-    # Pad images to have the same dimensions
-    padded_data = []
-    for d in data:
-        rows, cols = d.shape
-        pad_top = (max_rows - rows) // 2
-        pad_bottom = max_rows - rows - pad_top
-        pad_left = (max_cols - cols) // 2
-        pad_right = max_cols - cols - pad_left
-        d_padded = np.pad(d, ((pad_top, pad_bottom), (pad_left, pad_right)), 'constant', constant_values=-1)
-        padded_data.append(d_padded)
+def run_hopfield(filename, experiment_config):
+    """Run Hopfield Network experiment for a single CSV file"""
+    print(f"\n=== Processing {filename} for {experiment_config['name']} ===")
 
-    # Flatten the images for processing
-    data_flat = [np.reshape(d, (-1)) for d in padded_data]
+    # Create experiment directories
+    dirs = ensure_experiment_dir(experiment_config['name'])
 
-    # Create Hopfield Network Model
-    model = HopfieldNetwork()
-    model.train_hebb(data_flat)
+    patterns, pattern_shape = load_csv_patterns(filename)
 
-    # Generate test set by corrupting the input data
-    test_flat = [get_corrupted_input(d, 0.3) for d in data_flat]
+    # Process for each learning rule separately
+    if experiment_config['use_hebb']:
+        print("\nRunning Hebb's rule...")
+        model = HopfieldNetwork()
+        model.train_hebb(patterns)
+        run_tests_and_save(
+            model, patterns, pattern_shape, filename,
+            experiment_config, dirs['hebb'], 'hebb'
+        )
 
-    # Predict the output using the Hopfield Network
-    predicted_flat = model.predict(test_flat, threshold=0, asyn=False)
-    print("Show prediction results...")
+    if experiment_config['use_oja']:
+        print("\nRunning Oja's rule...")
+        model = HopfieldNetwork()
+        model.train_oja(
+            patterns,
+            learning_rate=experiment_config['learning_rate_oja'],
+            epochs=experiment_config['epochs_oja']
+        )
+        run_tests_and_save(
+            model, patterns, pattern_shape, filename,
+            experiment_config, dirs['oja'], 'oja'
+        )
 
-    # Calculate accuracy
-    per_image_accuracy, overall_accuracy = calculate_accuracy(data_flat,
-                                                              predicted_flat)
-    for idx, acc in enumerate(per_image_accuracy):
-        print(f"Image {idx + 1} Accuracy: {acc:.2f}%")
-    print(f"Overall Accuracy: {overall_accuracy:.2f}%")
 
-    # Plot the results
-    shape = (max_rows, max_cols)
-    plot(data_flat, test_flat, predicted_flat, shape)
+def run_tests_and_save(model, patterns, pattern_shape, filename,
+    experiment_config, dirs, rule_name):
+    """Run tests and save results for a specific learning rule"""
+    results = {}
+    corruption_levels = experiment_config.get('corruption_levels',
+                                              [experiment_config[
+                                                   'corruption_level']])
 
-    # Visualize the weights
-    print("Show network weights matrix...")
-    model.plot_weights()
+    for corruption_level in corruption_levels:
+        print(f"\nTesting with corruption level: {corruption_level}")
+        test_patterns = [get_corrupted_input(p, corruption_level)
+                         for p in patterns]
+
+        predicted_patterns = model.predict(
+            test_patterns,
+            threshold=experiment_config['threshold'],
+            asyn=experiment_config['async_update']
+        )
+
+        per_pattern_accuracy, overall_accuracy = calculate_accuracy(
+            patterns, predicted_patterns)
+
+        results[corruption_level] = {
+            'per_pattern_accuracy': per_pattern_accuracy,
+            'overall_accuracy': overall_accuracy,
+            'test_patterns': test_patterns,
+            'predicted_patterns': predicted_patterns
+        }
+
+        print(
+            f"\nAccuracy Results ({rule_name}, corruption level {corruption_level}):")
+        print("-" * 20)
+        for idx, acc in enumerate(per_pattern_accuracy):
+            print(f"Pattern {idx + 1} Accuracy: {acc:.2f}%")
+        print(f"Overall Accuracy: {overall_accuracy:.2f}%")
+
+        # Save accuracy results
+        with open(os.path.join(dirs['results'],
+                               f'{filename[:-4]}_corr{corruption_level}_accuracy.txt'),
+                  'w') as f:
+            f.write(f"File: {filename}\n")
+            f.write(f"Learning Rule: {rule_name}\n")
+            f.write(f"Corruption Level: {corruption_level}\n")
+            f.write("-" * 20 + "\n")
+            for idx, acc in enumerate(per_pattern_accuracy):
+                f.write(f"Pattern {idx + 1} Accuracy: {acc:.2f}%\n")
+            f.write(f"Overall Accuracy: {overall_accuracy:.2f}%\n")
+
+    # Visualization
+    if experiment_config['save_plots'] or experiment_config['show_plots']:
+        for corruption_level, result in results.items():
+            fig = plot(
+                patterns,
+                result['test_patterns'],
+                result['predicted_patterns'],
+                pattern_shape,
+                figsize=(20, 3 * len(patterns))
+            )
+
+            if experiment_config['save_plots']:
+                save_plot(fig,
+                          f'{filename[:-4]}_corr{corruption_level}_patterns.png',
+                          output_dir=dirs['plots'])
+
+            if not experiment_config['show_plots']:
+                plt.close(fig)
+
+    # Weights visualization
+    if experiment_config['save_plots']:
+        plt.figure(figsize=(6, 5))
+        w_mat = plt.imshow(model.W, cmap=plt.cm.coolwarm)
+        plt.colorbar(w_mat)
+        plt.title(f"Network Weights - {rule_name}")
+        plt.tight_layout()
+        save_plot(plt.gcf(), f'{filename[:-4]}_weights.png',
+                  output_dir=dirs['weights'])
+        plt.close()
+
 
 if __name__ == '__main__':
-    main()
+    # Get all experiments or select specific ones
+    experiments = get_experiments()
+
+    # Run all experiments
+    files_to_process = get_csv_files()
+
+    for exp_name, exp in experiments.items():
+        print(f"\n=== Starting Experiment: {exp_name} ===")
+        for filename in files_to_process:
+            run_hopfield(filename, exp.config)
