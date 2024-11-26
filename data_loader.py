@@ -22,34 +22,24 @@ def load_data(filename):
 
 
 def load_csv_patterns(filename):
-  """
-  Load patterns from a single CSV file where each row is a flattened pattern.
-  The shape is determined from the filename (e.g., '25x25' means each pattern is 25x25).
-
-  Args:
-      filename: Name of the CSV file (e.g., 'large-25x25.csv')
-
-  Returns:
-      patterns: numpy array of shape (num_patterns, pattern_size)
-      pattern_shape: tuple of (height, width)
-  """
-  # Extract shape from filename (e.g., 'large-25x25.csv' -> (25, 25))
+  """Load and reshape patterns to correct 2D shape"""
   match = re.search(r'(\d+)x(\d+)', filename)
   if not match:
     raise ValueError(f"Cannot extract shape from filename: {filename}")
 
   height, width = map(int, match.groups())
-  pattern_size = height * width
 
-  # Load the CSV file - each row is a pattern
   data = load_data(filename)
   num_patterns = data.shape[0]
+
+  # Reshape each pattern to 2D
+  reshaped_data = [pattern.reshape(height, width) for pattern in data]
 
   print(f"\nLoaded {filename}:")
   print(f"- Number of patterns: {num_patterns}")
   print(f"- Pattern shape: {height}x{width}")
 
-  return data, (height, width)
+  return np.array(reshaped_data), (height, width)
 
 
 def get_csv_files(input_dir='input_images'):

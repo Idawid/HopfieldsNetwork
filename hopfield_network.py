@@ -7,50 +7,51 @@ from tqdm import tqdm
 
 class HopfieldNetwork(object):
   def train_hebb(self, train_data):
-    """Hebb's learning rule (original train_weights renamed)"""
+    """Hebb's learning rule with 2D patterns"""
     print("Training with Hebb's rule...")
     num_data = len(train_data)
-    self.num_neuron = train_data[0].shape[0]
+    pattern_shape = train_data[0].shape
+    self.num_neuron = np.prod(pattern_shape)
 
     # Initialize weights
     W = np.zeros((self.num_neuron, self.num_neuron))
+
     # Mean subtraction (centering)
-    rho = np.sum([np.sum(t) for t in train_data]) / (num_data * self.num_neuron)
+    rho = np.mean(train_data)
+
     # Hebb rule
     for i in tqdm(range(num_data)):
       t = train_data[i] - rho
-      W += np.outer(t, t)
-    # Make diagonal elements of W into 0
+      t_flat = t.flatten()
+      W += np.outer(t_flat, t_flat)
+
     np.fill_diagonal(W, 0)
-    # Optionally normalize by number of patterns
     W /= num_data
     self.W = W
 
+
   def train_oja(self, train_data, learning_rate=0.01, epochs=100):
+    """Modified Oja's rule with 2D patterns"""
     print("Training with modified Oja's rule...")
     num_data = len(train_data)
-    self.num_neuron = train_data[0].shape[0]
+    pattern_shape = train_data[0].shape
+    self.num_neuron = np.prod(pattern_shape)
 
-    # Initialize weights
     W = np.zeros((self.num_neuron, self.num_neuron))
 
-    # Modified Oja's rule for Hopfield
     for epoch in tqdm(range(epochs)):
-        for i in range(num_data):
-            pattern = train_data[i]
-            # Calculate output
-            y = np.sign(np.dot(W, pattern))  # Use sign function for binary output
+      for i in range(num_data):
+        pattern = train_data[i].flatten()
+        y = np.sign(np.dot(W, pattern))
 
-            # Update weights with Oja's rule
-            for j in range(self.num_neuron):
-                W[j, :] += learning_rate * (pattern[j] * pattern - y[j] * y * W[j, :])
+        for j in range(self.num_neuron):
+          W[j, :] += learning_rate * (pattern[j] * pattern - y[j] * y * W[j, :])
 
-            # Ensure symmetry
-            W = (W + W.T) / 2
-            # Zero diagonal
-            np.fill_diagonal(W, 0)
+        W = (W + W.T) / 2
+        np.fill_diagonal(W, 0)
 
     self.W = W
+
   def predict(self, data, num_iter=20, threshold=0, asyn=False):
     self.num_iter = num_iter
     self.threshold = threshold
@@ -66,19 +67,17 @@ class HopfieldNetwork(object):
     return predicted
 
   def _run(self, init_s):
-    if self.asyn == False:
-      """
-      Synchronous update
-      """
-      # Compute initial state energy
+    if not self.asyn:
+      """Synchronous update"""
       s = init_s
       e = self.energy(s)
 
       # Iteration
       for i in range(self.num_iter):
-        # Update s
-        s = np.sign(self.W @ s - self.threshold)
-        # Compute new state energy
+        s_flat = s.flatten()
+        s_new = np.sign(self.W @ s_flat - self.threshold)
+        s = s_new.reshape(init_s.shape)
+
         e_new = self.energy(s)
 
         # s is converged
@@ -88,22 +87,24 @@ class HopfieldNetwork(object):
         e = e_new
       return s
     else:
-      """
-      Asynchronous update
-      """
-      # Compute initial state energy
+      """Asynchronous update"""
       s = init_s
       e = self.energy(s)
+      height, width = s.shape
 
       # Iteration
       for i in range(self.num_iter):
         for j in range(100):
-          # Select random neuron
-          idx = np.random.randint(0, self.num_neuron)
-          # Update s
-          s[idx] = np.sign(self.W[idx].T @ s - self.threshold)
+          # Select random position in 2D
+          h_idx = np.random.randint(0, height)
+          w_idx = np.random.randint(0, width)
+          flat_idx = h_idx * width + w_idx
 
-        # Compute new state energy
+          s_flat = s.flatten()
+          s_flat[flat_idx] = np.sign(
+            self.W[flat_idx].T @ s_flat - self.threshold)
+          s = s_flat.reshape(s.shape)
+
         e_new = self.energy(s)
 
         # s is converged
@@ -114,7 +115,8 @@ class HopfieldNetwork(object):
       return s
 
   def energy(self, s):
-    return -0.5 * s @ self.W @ s + np.sum(s * self.threshold)
+    s_flat = s.flatten()
+    return -0.5 * s_flat @ self.W @ s_flat + np.sum(s_flat * self.threshold)
 
   def plot_weights(self):
     plt.figure(figsize=(6, 5))
