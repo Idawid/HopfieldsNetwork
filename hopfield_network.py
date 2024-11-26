@@ -12,23 +12,21 @@ class HopfieldNetwork(object):
     num_data = len(train_data)
     self.num_neuron = train_data[0].shape[0]
 
-    # initialize weights
+    # Initialize weights
     W = np.zeros((self.num_neuron, self.num_neuron))
+    # Mean subtraction (centering)
     rho = np.sum([np.sum(t) for t in train_data]) / (num_data * self.num_neuron)
-
     # Hebb rule
     for i in tqdm(range(num_data)):
       t = train_data[i] - rho
       W += np.outer(t, t)
-
-    # Make diagonal element of W into 0
-    diagW = np.diag(np.diag(W))
-    W = W - diagW
+    # Make diagonal elements of W into 0
+    np.fill_diagonal(W, 0)
+    # Optionally normalize by number of patterns
     W /= num_data
-
     self.W = W
 
-  def train_oja(self, train_data, learning_rate=0.01, epochs=500):
+  def train_oja(self, train_data, learning_rate=0.01, epochs=100):
     print("Training with modified Oja's rule...")
     num_data = len(train_data)
     self.num_neuron = train_data[0].shape[0]
@@ -42,9 +40,10 @@ class HopfieldNetwork(object):
             pattern = train_data[i]
             # Calculate output
             y = np.sign(np.dot(W, pattern))  # Use sign function for binary output
-            # Update weights
-            delta_W = learning_rate * (np.outer(pattern, pattern) - np.outer(y, y))
-            W += delta_W
+
+            # Update weights with Oja's rule
+            for j in range(self.num_neuron):
+                W[j, :] += learning_rate * (pattern[j] * pattern - y[j] * y * W[j, :])
 
             # Ensure symmetry
             W = (W + W.T) / 2
@@ -52,9 +51,7 @@ class HopfieldNetwork(object):
             np.fill_diagonal(W, 0)
 
     self.W = W
-
   def predict(self, data, num_iter=20, threshold=0, asyn=False):
-    print("Start to predict...")
     self.num_iter = num_iter
     self.threshold = threshold
     self.asyn = asyn

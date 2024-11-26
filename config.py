@@ -8,11 +8,11 @@ class ExperimentConfig:
       # Learning configuration
       'use_hebb': True,
       'use_oja': True,
-      'learning_rate_oja': 0.01,
-      'epochs_oja': 100,
+      'learning_rate_oja': 0.001,
+      'epochs_oja': 3,
 
       # Testing configuration
-      'corruption_levels': [0.1, 0.2, 0.3],
+      'corruption_levels': [0.1, 0.2, 0.3, 0.4, 0.5],
       'async_update': False,
       'threshold': 0,
 

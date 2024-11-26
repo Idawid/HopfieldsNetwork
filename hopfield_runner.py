@@ -63,47 +63,92 @@ def run_tests_and_save(model, patterns, pattern_shape, filename, config, dirs,
   """Run tests and save results for a specific learning rule"""
   results = {}
 
-  for corruption_level in config['corruption_levels']:
-    print(f"\nTesting with corruption level: {corruption_level}")
-    test_patterns = [get_corrupted_input(p, corruption_level)
-                     for p in patterns]
+  # Test pattern stability (no corruption)
+  stable_patterns = []
+  for i, pattern in enumerate(patterns):
+    output = model.predict([pattern], threshold=config['threshold'],
+                           asyn=config['async_update'])[0]
+    is_stable = np.array_equal(pattern, output)
+    stable_patterns.append(is_stable)
 
-    predicted_patterns = model.predict(
-        test_patterns,
-        threshold=config['threshold'],
-        asyn=config['async_update']
-    )
+  # Calculate pattern similarities
+  similarities = []
+  for i in range(len(patterns)):
+    for j in range(i + 1, len(patterns)):
+      sim = np.sum(patterns[i] == patterns[j]) / len(patterns[i])
+      similarities.append(sim)
 
-    per_pattern_accuracy, overall_accuracy = calculate_accuracy(
-        patterns, predicted_patterns)
+  # Save comprehensive results
+  with open(
+      os.path.join(dirs['results'], f'{filename[:-4]}_{rule_name}_results.txt'),
+      'w') as f:
+    # Basic information
+    f.write(f"=== Analysis Results ===\n\n")
+    f.write(f"File: {filename}\n")
+    f.write(f"Learning Rule: {rule_name}\n")
+    f.write(f"Pattern Set Info:\n")
+    f.write(f"- Number of patterns: {len(patterns)}\n")
+    f.write(f"- Pattern shape: {pattern_shape}\n\n")
 
-    results[corruption_level] = {
-      'per_pattern_accuracy': per_pattern_accuracy,
-      'overall_accuracy': overall_accuracy,
-      'test_patterns': test_patterns,
-      'predicted_patterns': predicted_patterns
-    }
+    # Stability analysis
+    f.write(f"Stability Analysis:\n")
+    f.write(f"- Stable patterns: {sum(stable_patterns)}/{len(patterns)}\n")
+    f.write(f"- Stability ratio: {sum(stable_patterns) / len(patterns):.2f}\n")
+    f.write("- Per-pattern stability:\n")
+    for i, is_stable in enumerate(stable_patterns):
+      f.write(f"  Pattern {i + 1}: {'Stable' if is_stable else 'Unstable'}\n")
+    f.write("\n")
 
-    print(
-        f"\nAccuracy Results ({rule_name}, corruption level {corruption_level}):")
-    print("-" * 20)
-    for idx, acc in enumerate(per_pattern_accuracy):
-      print(f"Pattern {idx + 1} Accuracy: {acc:.2f}%")
-    print(f"Overall Accuracy: {overall_accuracy:.2f}%")
+    # Pattern similarities
+    f.write(f"Pattern Similarities:\n")
+    f.write(f"- Mean: {np.mean(similarities):.3f}\n")
+    f.write(f"- Std: {np.std(similarities):.3f}\n")
+    f.write(f"- Min: {np.min(similarities):.3f}\n")
+    f.write(f"- Max: {np.max(similarities):.3f}\n\n")
 
-    # Save accuracy results
-    with open(os.path.join(dirs['results'],
-                           f'{filename[:-4]}_corr{corruption_level}_accuracy.txt'),
-              'w') as f:
-      f.write(f"File: {filename}\n")
-      f.write(f"Learning Rule: {rule_name}\n")
-      f.write(f"Corruption Level: {corruption_level}\n")
-      f.write("-" * 20 + "\n")
+    # Network statistics
+    f.write(f"Network Statistics:\n")
+    f.write(f"Weight matrix:\n")
+    f.write(f"- Mean: {np.mean(model.W):.3f}\n")
+    f.write(f"- Std: {np.std(model.W):.3f}\n")
+    f.write(f"- Min: {np.min(model.W):.3f}\n")
+    f.write(f"- Max: {np.max(model.W):.3f}\n\n")
+
+    # Corruption tests
+    f.write(f"Corruption Tests:\n")
+    for corruption_level in config['corruption_levels']:
+      f.write(f"\nCorruption Level: {corruption_level}\n")
+
+      # Create corrupted test patterns
+      test_patterns = [get_corrupted_input(p, corruption_level)
+                       for p in patterns]
+
+      # Run prediction
+      predicted_patterns = model.predict(
+          test_patterns,
+          threshold=config['threshold'],
+          asyn=config['async_update']
+      )
+
+      # Calculate accuracy
+      per_pattern_accuracy, overall_accuracy = calculate_accuracy(
+          patterns, predicted_patterns)
+
+      # Save results
+      f.write(f"- Overall Accuracy: {overall_accuracy:.2f}%\n")
+      f.write("- Per-pattern Accuracy:\n")
       for idx, acc in enumerate(per_pattern_accuracy):
-        f.write(f"Pattern {idx + 1} Accuracy: {acc:.2f}%\n")
-      f.write(f"Overall Accuracy: {overall_accuracy:.2f}%\n")
+        f.write(f"  Pattern {idx + 1}: {acc:.2f}%\n")
 
-  # Visualization
+      # Store results for visualization
+      results[corruption_level] = {
+        'per_pattern_accuracy': per_pattern_accuracy,
+        'overall_accuracy': overall_accuracy,
+        'test_patterns': test_patterns,
+        'predicted_patterns': predicted_patterns
+      }
+
+  # Visualization code remains the same...
   if config['save_plots'] or config['show_plots']:
     for corruption_level, result in results.items():
       fig = plot(
@@ -132,3 +177,4 @@ def run_tests_and_save(model, patterns, pattern_shape, filename, config, dirs,
     save_plot(plt.gcf(), f'{filename[:-4]}_weights.png',
               output_dir=dirs['weights'])
     plt.close()
+

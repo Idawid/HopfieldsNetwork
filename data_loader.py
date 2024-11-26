@@ -2,6 +2,9 @@ import numpy as np
 np.random.seed(1)
 import re
 import os
+from skimage import io
+from skimage.color import rgb2gray
+from skimage.transform import resize
 
 import pandas as pd
 
@@ -9,7 +12,10 @@ import pandas as pd
 def load_data(filename):
   for directory in ['input_images', 'custom_input_images']:
     try:
-      return np.loadtxt(os.path.join(directory, filename), delimiter=',')
+      data = np.loadtxt(os.path.join(directory, filename), delimiter=',')
+      if len(data.shape) == 1:  # If 1D array (m,)
+        data = data.reshape(1, -1)  # Convert to 2D array (1,m)
+      return data
     except FileNotFoundError:
       continue
   raise FileNotFoundError(f"File {filename} not found in any input directory")
@@ -137,3 +143,37 @@ def get_custom_input(input_dir='custom_input_images'):
   except (FileNotFoundError, PermissionError) as e:
     print(f"Error accessing directory '{input_dir}': {e}")
     return []
+
+
+def process_raw_to_custom_image(raw_dir='raw_images_to_process',
+    output_dir='custom_input_images'):
+  """Process raw images to -1/1 CSV format - one flattened row"""
+  os.makedirs(output_dir, exist_ok=True)
+
+  for filename in os.listdir(raw_dir):
+    if filename.endswith(('.png', '.jpg', '.jpeg')):
+      # Load and preprocess image
+      img = io.imread(os.path.join(raw_dir, filename))
+
+      # Handle different image formats
+      if len(img.shape) == 3:
+        if img.shape[2] == 4:   # RGBA
+          img = img[..., :3]    # Remove alpha channel
+        img = rgb2gray(img)
+
+      height, width = img.shape
+
+      # Process to -1/1 and flatten
+      img_binary = (img > np.mean(img)).astype(int)
+      img_final = 2 * img_binary - 1
+      img_flat = img_final.flatten()  # Flatten to one row
+
+      # Save as CSV
+      base_name = os.path.splitext(filename)[0]
+      output_name = f"{base_name}_{height}x{width}.csv"
+      np.savetxt(os.path.join(output_dir, output_name),
+                 img_flat.reshape(1, -1),  # Ensure single row
+                 delimiter=',',
+                 fmt='%d')
+
+      print(f"Processed {filename} -> {output_name}")
